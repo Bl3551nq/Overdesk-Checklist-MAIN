@@ -1,0 +1,8 @@
+{
+  "name": " Overdesk Checklist MAIN",
+  "description": "Floating checklist designed for windows, featuring transparent background, custom scaling, light/dark themes, and automated updates.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

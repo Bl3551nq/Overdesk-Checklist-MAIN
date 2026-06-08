@@ -1,0 +1,48 @@
+name: Build & Release Overdesk Checklist
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-style: 'npm'
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install System Dependencies
+        run: npm ci
+
+      - name: Build Web Application (React/Vite)
+        run: npm run build
+
+      - name: Build Windows Executables (Electron Builder)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win --publish always
+
+      - name: Upload Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Overdesk-Checklist-exe
+          path: |
+            dist-electron/*.exe
+            dist-electron/*.yml
+          if-no-files-found: warn
