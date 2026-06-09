@@ -1281,42 +1281,13 @@ export default function App() {
       {/* Gumroad License validation screen */}
       {!licenseActive && (
         <div className="license-screen" id="license-screen">
-          <svg className="license-logo" viewBox="0 0 100 100" style={{ width: '90px', height: '90px', transform: 'rotate(-12deg)', overflow: 'visible', marginBottom: '16px' }}>
-            <defs>
-              <radialGradient id="sphereGrad" cx="30%" cy="30%" r="70%">
-                <stop offset="0%" stopColor="#4df3ff" />
-                <stop offset="50%" stopColor="#00b0ff" />
-                <stop offset="100%" stopColor="#0a6080" />
-              </radialGradient>
-              <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="50%">
-                <stop offset="0%" stopColor="#2c2c35" />
-                <stop offset="50%" stopColor="#15151b" />
-                <stop offset="100%" stopColor="#070709" />
-              </linearGradient>
-              <clipPath id="frontClip">
-                <rect x="0" y="45" width="100" height="55" />
-              </clipPath>
-            </defs>
-            {/* Back of the orbit ring */}
-            <path 
-              d="M 10 50 C 10 32, 90 32, 90 50" 
-              fill="none" 
-              stroke="url(#ringGrad)" 
-              strokeWidth="11" 
-              strokeLinecap="round"
-            />
-            {/* Glossy Planet Sphere */}
-            <circle cx="50" cy="50" r="30" fill="url(#sphereGrad)" filter="drop-shadow(0px 8px 12px rgba(0,0,0,0.455))" />
-            {/* Front of the orbit ring */}
-            <path 
-              d="M 10 50 C 10 68, 90 68, 90 50" 
-              fill="none" 
-              stroke="url(#ringGrad)" 
-              strokeWidth="11" 
-              strokeLinecap="round"
-              clipPath="url(#frontClip)"
-            />
-          </svg>
+          <img 
+            className="license-logo" 
+            src="/src/logo.svg" 
+            alt="Overdesk Checklist Logo" 
+            style={{ width: '80px', height: '100px', objectFit: 'contain', marginBottom: '16px' }}
+            referrerPolicy="no-referrer"
+          />
           <div className="license-title">Overdesk Checklist</div>
           <div className="license-sub">
             Enter your license key to activate.
