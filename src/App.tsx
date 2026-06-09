@@ -895,11 +895,10 @@ export default function App() {
     }
 
     const observer = new ResizeObserver(() => {
-      // If minimizing, delay sizing down until the shrink animation finishes (385ms) to avoid visual shadow clipping
-      // Otherwise (unminimizing, checklist edits, scaling, etc.), report bounds instantly without any timeout debounce delay to prevent clipping/crops!
-      const isMinifyingTransition = lastMinimizedRef.current !== minimized && minimized;
-
-      if (isMinifyingTransition) {
+      // If expanding or collapsing (minimizing/unminimizing), defer measuring the final relaxed bounds
+      // for 385ms to allow GPU visual transitions to complete smoothly without window sizes clashing or causing jitter.
+      // Otherwise (checklist edits, scaling, drag events), report bounds immediately for pixel-perfect tracking.
+      if (isMinimizedTransition) {
         if (resizeTimer) clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
           reportBounds();
