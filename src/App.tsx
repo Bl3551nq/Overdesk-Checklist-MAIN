@@ -9,7 +9,7 @@ declare global {
       validateLicense: (key: string) => Promise<{ ok: boolean; test?: boolean }>;
       closeApp: () => void;
       setHeight: (height: number) => void;
-      cardBounds: (bounds: { x: number; y: number; w: number; h: number }) => void;
+      cardBounds: (bounds: { x: number; y: number; w: number; h: number; scale?: number }) => void;
       scaleStart: () => void;
       scaleEnd: (scale: number) => void;
       installUpdate: () => void;
@@ -602,6 +602,7 @@ export default function App() {
   // Refs
   const cardRef = useRef<HTMLDivElement>(null);
   const lastMinimizedRef = useRef<boolean>(minimized);
+  const lastUnminimizedHeightRef = useRef<number>(480);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const listInputRef = useRef<HTMLInputElement>(null);
 
@@ -864,43 +865,56 @@ export default function App() {
     if (!cardRef.current) return;
 
     let resizeTimer: any = null;
-    const observer = new ResizeObserver(() => {
-      if (resizeTimer) clearTimeout(resizeTimer);
-      
-      const isMinimizedTransition = lastMinimizedRef.current !== minimized;
-      const delay = isMinimizedTransition ? 380 : 16;
 
-      // Fast, ultra-smooth boundary synchronization
-      resizeTimer = setTimeout(() => {
-        if (cardRef.current) {
-          const rect = cardRef.current.getBoundingClientRect();
-          if (window.electronAPI) {
-            window.electronAPI.cardBounds({
-              x: rect.left,
-              y: rect.top,
-              w: 320, // Standard exact card width constant
-              h: cardRef.current.offsetHeight,
-            });
-          }
-          lastMinimizedRef.current = minimized;
-        }
-      }, delay);
-    });
-
-    observer.observe(cardRef.current);
-    
-    // Immediate measurement for swift loading bounds alignment
-    if (cardRef.current) {
+    const reportBounds = (forceHeight?: number) => {
+      if (!cardRef.current) return;
       const rect = cardRef.current.getBoundingClientRect();
+      const h = forceHeight !== undefined ? forceHeight : cardRef.current.offsetHeight;
+
+      // Update our saved unminimized height ref if we are currently expanded
+      if (!minimized && cardRef.current.offsetHeight > 100) {
+        lastUnminimizedHeightRef.current = cardRef.current.offsetHeight;
+      }
+
       if (window.electronAPI) {
         window.electronAPI.cardBounds({
           x: rect.left,
           y: rect.top,
-          w: 320,
-          h: cardRef.current.offsetHeight,
+          w: 320, // Standard exact card width constant
+          h,
+          scale,
         });
       }
+    };
+
+    const isMinimizedTransition = lastMinimizedRef.current !== minimized;
+
+    // When we start to unminimize, instantly expand the window so there is plenty of room for transition
+    if (isMinimizedTransition && !minimized) {
+      reportBounds(lastUnminimizedHeightRef.current);
     }
+
+    const observer = new ResizeObserver(() => {
+      // If minimizing, delay sizing down until the shrink animation finishes (385ms) to avoid visual shadow clipping
+      // Otherwise (unminimizing, checklist edits, scaling, etc.), report bounds instantly without any timeout debounce delay to prevent clipping/crops!
+      const isMinifyingTransition = lastMinimizedRef.current !== minimized && minimized;
+
+      if (isMinifyingTransition) {
+        if (resizeTimer) clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+          reportBounds();
+          lastMinimizedRef.current = minimized;
+        }, 385);
+      } else {
+        reportBounds();
+        lastMinimizedRef.current = minimized;
+      }
+    });
+
+    observer.observe(cardRef.current);
+
+    // Immediate measurement for swift loading bounds alignment
+    reportBounds();
 
     return () => {
       observer.disconnect();
@@ -1251,10 +1265,25 @@ export default function App() {
         overflow: 'visible',
       }}
     >
-      {/* Gumroad License validation screen */}
-      {!licenseActive && (
-        <div className="license-screen" id="license-screen">
-          <div className="license-card">
+      {/* Main checklist canvas card widget */}
+      <div
+        className={`card ${isLight ? 'light' : ''} ${minimized ? 'minimized' : ''} ${isGripped ? 'gripped' : ''} ${!licenseActive ? 'license-mode' : ''}`}
+        id="card"
+        ref={cardRef}
+        onPointerDown={handleCardPointerDown}
+        onPointerMove={handleCardPointerMove}
+        onPointerUp={handleCardPointerUp}
+        onPointerCancel={handleCardPointerUp}
+        onDragStart={(e) => e.preventDefault()}
+        style={{
+          transform: `translate(${translate.x}px, ${translate.y}px) scale(${isGripped ? 1.035 : 1})`,
+          boxShadow: !licenseActive ? 'none' : (isGripped ? `0 18px 50px 5px ${modes[currentMode]?.soft || 'var(--accent-soft)'}, 0 6px 18px rgba(0, 0, 0, 0.45)` : undefined),
+          transition: isGripped ? 'transform 0s, box-shadow 0.2s ease' : 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, padding 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
+          cursor: isGripped ? 'grabbing' : undefined,
+        }}
+      >
+        {!licenseActive ? (
+          <div className="license-card-inner" style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px', boxSizing: 'border-box', padding: '16px 8px' }}>
             <img 
               className="license-logo" 
               src={overdeskLogo} 
@@ -1262,8 +1291,8 @@ export default function App() {
               style={{ width: '80px', height: '100px', objectFit: 'contain', marginBottom: '16px' }}
               referrerPolicy="no-referrer"
             />
-            <div className="license-title">Overdesk Checklist</div>
-            <div className="license-sub">
+            <div className="license-title" style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text)' }}>Overdesk Checklist</div>
+            <div className="license-sub" style={{ fontSize: '11px', color: 'var(--text-mid)', textAlign: 'center', lineHeight: '1.4' }}>
               Enter your license key to activate.
               <br />
               Find your license key inside your Gumroad purchase receipt.
@@ -1279,37 +1308,20 @@ export default function App() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') attemptActivation();
               }}
+              style={{ width: '100%' }}
             />
-            <button className="license-btn" onClick={attemptActivation}>
+            <button className="license-btn" onClick={attemptActivation} style={{ width: '100%' }}>
               Activate
             </button>
             
-            <div className="license-hint" style={{ fontSize: '11px', marginTop: '12px' }}>
+            <div className="license-hint" style={{ fontSize: '11px', marginTop: '12px', textAlign: 'center' }}>
               <span style={{ color: 'rgba(255,255,255,0.4)' }}>
                 Get your license key on Gumroad: <a href="https://overdesk.gumroad.com/l/app3" target="_blank" rel="noreferrer" style={{ color: '#00ccff', textDecoration: 'underline' }}>overdesk.gumroad.com/l/app3</a>
               </span>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Main checklist canvas card widget */}
-      <div
-        className={`card ${isLight ? 'light' : ''} ${minimized ? 'minimized' : ''} ${isGripped ? 'gripped' : ''}`}
-        id="card"
-        ref={cardRef}
-        onPointerDown={handleCardPointerDown}
-        onPointerMove={handleCardPointerMove}
-        onPointerUp={handleCardPointerUp}
-        onPointerCancel={handleCardPointerUp}
-        onDragStart={(e) => e.preventDefault()}
-        style={{
-          transform: `translate(${translate.x}px, ${translate.y}px) scale(${isGripped ? 1.035 : 1})`,
-          boxShadow: isGripped ? `0 18px 50px 5px ${modes[currentMode]?.soft || 'var(--accent-soft)'}, 0 6px 18px rgba(0, 0, 0, 0.45)` : undefined,
-          transition: isGripped ? 'transform 0s, box-shadow 0.2s ease' : 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, padding 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
-          cursor: isGripped ? 'grabbing' : undefined,
-        }}
-      >
+        ) : (
+          <>
         {/* Aspect Sizer Handle (Draggable resize left-bar) */}
         <div className="resize-handle" id="resize-handle" onMouseDown={handleSizingMouseDown} onTouchStart={handleSizingMouseDown}></div>
 
@@ -1701,6 +1713,8 @@ export default function App() {
             </button>
           </div>
         </div>
+          </>
+        )}
       </div>
     </div>
   );

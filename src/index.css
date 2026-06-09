@@ -1071,37 +1071,15 @@ body.editing .option { cursor: default; }
 /* ═══════════════════════════════════════════════════════
    LICENSE GUMROAD VALIDATION SCREEN
 ═══════════════════════════════════════════════════════ */
-.license-screen {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  background: rgba(2, 4, 16, 0.5);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: auto;
-}
-.license-screen, .license-screen * {
+.card.license-mode {
   box-shadow: none !important;
   text-shadow: none !important;
   filter: none !important;
 }
-.license-card {
-  width: 320px;
-  border-radius: 36px;
-  padding: 24px 20px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0.0) 100%), #020410;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(40px) saturate(220%);
-  -webkit-backdrop-filter: blur(40px) saturate(220%);
+.card.license-mode * {
   box-shadow: none !important;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  animation: cardIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  text-shadow: none !important;
+  filter: none !important;
 }
 .license-logo {
   width: 72px;

@@ -7,6 +7,8 @@ const { autoUpdater } = require('electron-updater');
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
+let cachedX = null;
+let cachedY = null;
 const configPath = path.join(app.getPath('userData'), 'app-config.json');
 
 // Helper to read config
@@ -60,6 +62,8 @@ function createWindow() {
   if (typeof config.x === 'number' && typeof config.y === 'number') {
     windowOptions.x = config.x;
     windowOptions.y = config.y;
+    cachedX = config.x;
+    cachedY = config.y;
   }
 
   // Load appropriate application icon
@@ -86,10 +90,17 @@ function createWindow() {
   // Save coordinates when window moves
   let moveTimeout;
   mainWindow.on('move', () => {
+    if (mainWindow) {
+      const [x, y] = mainWindow.getPosition();
+      cachedX = x;
+      cachedY = y;
+    }
     if (moveTimeout) clearTimeout(moveTimeout);
     moveTimeout = setTimeout(() => {
       if (mainWindow) {
         const [x, y] = mainWindow.getPosition();
+        cachedX = x;
+        cachedY = y;
         writeConfig({ x, y });
       }
     }, 300);
@@ -282,15 +293,40 @@ ipcMain.on('set-height', (event, height) => {
 ipcMain.on('card-bounds', (event, bounds) => {
   if (mainWindow && bounds) {
     const config = readConfig();
-    const scale = config.scale || 1.0;
-    // Resize Electron window to leave ample transparent padding so the card's deep blurred drop shadow doesn't get clipped
-    const targetW = Math.round((bounds.w + 140) * scale);
-    const targetH = Math.round((bounds.h + 200) * scale);
+    const activeScale = bounds.scale !== undefined ? bounds.scale : (config.scale || 1.0);
     
-    // Safety minimums
-    const currentW = Math.max(100, targetW);
-    const currentH = Math.max(50, targetH);
-    mainWindow.setSize(currentW, currentH);
+    // Resize Electron window to leave ample transparent padding so the card's deep blurred drop shadow doesn't get clipped
+    const targetW = Math.max(100, Math.round((bounds.w + 140) * activeScale));
+    const targetH = Math.max(50, Math.round((bounds.h + 200) * activeScale));
+    
+    // Initialize or read position from cached values
+    if (cachedX === null || cachedY === null) {
+      const [currentX, currentY] = mainWindow.getPosition();
+      cachedX = currentX;
+      cachedY = currentY;
+    }
+    
+    const [currentW, currentH] = mainWindow.getSize();
+    
+    // Calculate off-axis shifts to lock the visual center in place
+    const deltaW = targetW - currentW;
+    const deltaH = targetH - currentH;
+    
+    const newX = Math.round(cachedX - deltaW / 2);
+    const newY = Math.round(cachedY - deltaH / 2);
+    
+    // Update cache proactively before the asynchronous window shift settles
+    cachedX = newX;
+    cachedY = newY;
+    
+    mainWindow.setBounds({
+      x: newX,
+      y: newY,
+      width: targetW,
+      height: targetH
+    });
+    
+    writeConfig({ x: newX, y: newY, scale: activeScale });
   }
 });
 
