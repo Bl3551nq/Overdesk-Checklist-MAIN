@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import overdeskLogo from './logo.svg';
+const overdeskLogo = 'https://raw.githubusercontent.com/Bl3551nq/Overdesk-Logos/refs/heads/main/OVERDESK-checklist.svg';
 
 // Declaration to access global Electron API from preload script
 declare global {
@@ -580,7 +580,6 @@ export default function App() {
     return { x: 0, y: 0 };
   });
   const [isGripped, setIsGripped] = useState<boolean>(false);
-  const [cardHeight, setCardHeight] = useState<number>(480);
 
   const dragPointerRef = useRef<{
     dragging: boolean;
@@ -602,6 +601,7 @@ export default function App() {
 
   // Refs
   const cardRef = useRef<HTMLDivElement>(null);
+  const lastMinimizedRef = useRef<boolean>(minimized);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const listInputRef = useRef<HTMLInputElement>(null);
 
@@ -817,11 +817,7 @@ export default function App() {
   }, [iconAssignments]);
 
   useEffect(() => {
-    setScale(scale);
     localStorage.setItem('fm_scale', scale.toString());
-    if (window.electronAPI) {
-      window.electronAPI.scaleEnd(scale);
-    }
   }, [scale]);
 
   useEffect(() => {
@@ -839,71 +835,24 @@ export default function App() {
   useEffect(() => {
     if (typeof window !== 'undefined' && (window as any).electronAPI) {
       try {
-        const canvas = document.createElement('canvas');
-        canvas.width = 256;
-        canvas.height = 256;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.clearRect(0, 0, 256, 256);
-
-          ctx.save();
-          // Scale down around the center to add proper safety margin padding to match standard taskbar icons perfectly
-          ctx.translate(128, 128);
-          ctx.scale(0.76, 0.76);
-          ctx.translate(-128, -128);
-
-          ctx.save();
-          // Diagonal rotation angle matching Saturn orbital design in UI
-          ctx.translate(128, 128);
-          ctx.rotate(-12 * Math.PI / 180);
-          ctx.translate(-128, -128);
-
-          // 1. Draw back of the ring
-          ctx.strokeStyle = '#0e0e11';
-          ctx.lineWidth = 26;
-          ctx.lineCap = 'round';
-          ctx.beginPath();
-          ctx.ellipse(128, 128, 110, 40, 0, Math.PI, 0, true);
-          ctx.stroke();
-
-          // 2. Draw Sphere
-          const grad = ctx.createRadialGradient(98, 98, 10, 128, 128, 76);
-          grad.addColorStop(0, '#56efff');
-          grad.addColorStop(0.35, '#00b4d8');
-          grad.addColorStop(0.7, '#0077b6');
-          grad.addColorStop(1, '#003e5c');
-
-          ctx.fillStyle = grad;
-          ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
-          ctx.shadowBlur = 15;
-          ctx.shadowOffsetX = 0;
-          ctx.shadowOffsetY = 10;
-          ctx.beginPath();
-          ctx.arc(128, 128, 76, 0, Math.PI * 2);
-          ctx.fill();
-          
-          ctx.restore(); // cancel shadow mappings
-
-          // 3. Draw front of the ring (using a clip path to clip to bottom half)
-          ctx.save();
-          ctx.translate(128, 128);
-          ctx.rotate(-12 * Math.PI / 180);
-          ctx.translate(-128, -128);
-
-          ctx.strokeStyle = '#0e0e11';
-          ctx.lineWidth = 26;
-          ctx.lineCap = 'round';
-          ctx.beginPath();
-          ctx.ellipse(128, 128, 110, 40, 0, 0, Math.PI, false);
-          ctx.stroke();
-
-          ctx.restore();
-
-          ctx.restore(); // restore global scale transformation
-
-          const dataUrl = canvas.toDataURL('image/png');
-          (window as any).electronAPI.saveIcon(dataUrl);
-        }
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.src = overdeskLogo;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = 256;
+          canvas.height = 256;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.clearRect(0, 0, 256, 256);
+            ctx.drawImage(img, 0, 0, 256, 256);
+            const dataUrl = canvas.toDataURL('image/png');
+            (window as any).electronAPI.saveIcon(dataUrl);
+          }
+        };
+        img.onerror = (err) => {
+          console.error('Failed to load SVG logo for dynamic tray icon:', err);
+        };
       } catch (err) {
         console.error('Error auto-generating and saving dynamic logo:', err);
       }
@@ -917,6 +866,10 @@ export default function App() {
     let resizeTimer: any = null;
     const observer = new ResizeObserver(() => {
       if (resizeTimer) clearTimeout(resizeTimer);
+      
+      const isMinimizedTransition = lastMinimizedRef.current !== minimized;
+      const delay = isMinimizedTransition ? 380 : 16;
+
       // Fast, ultra-smooth boundary synchronization
       resizeTimer = setTimeout(() => {
         if (cardRef.current) {
@@ -929,9 +882,9 @@ export default function App() {
               h: cardRef.current.offsetHeight,
             });
           }
-          setCardHeight(cardRef.current.offsetHeight);
+          lastMinimizedRef.current = minimized;
         }
-      }, 16); // ~1 frame debounce
+      }, delay);
     });
 
     observer.observe(cardRef.current);
@@ -947,14 +900,13 @@ export default function App() {
           h: cardRef.current.offsetHeight,
         });
       }
-      setCardHeight(cardRef.current.offsetHeight);
     }
 
     return () => {
       observer.disconnect();
       if (resizeTimer) clearTimeout(resizeTimer);
     };
-  }, [scale]);
+  }, [scale, minimized]);
 
   // ── Custom Sizing drag logic ──
   const sizingRef = useRef({ dragging: false, startX: 0, startScale: 1.0 });
@@ -1289,7 +1241,7 @@ export default function App() {
       className="app-container"
       style={{
         width: '460px',
-        height: `${cardHeight + 200}px`,
+        height: '100%',
         transform: `scale(${scale})`,
         display: 'flex',
         alignItems: 'center',
@@ -1354,7 +1306,7 @@ export default function App() {
         style={{
           transform: `translate(${translate.x}px, ${translate.y}px) scale(${isGripped ? 1.035 : 1})`,
           boxShadow: isGripped ? `0 18px 50px 5px ${modes[currentMode]?.soft || 'var(--accent-soft)'}, 0 6px 18px rgba(0, 0, 0, 0.45)` : undefined,
-          transition: isGripped ? 'transform 0s, box-shadow 0.2s ease' : 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease',
+          transition: isGripped ? 'transform 0s, box-shadow 0.2s ease' : 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, padding 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
           cursor: isGripped ? 'grabbing' : undefined,
         }}
       >
