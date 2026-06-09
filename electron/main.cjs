@@ -6,6 +6,7 @@ const { autoUpdater } = require('electron-updater');
 // Keep variables in higher scope to prevent garbage collection
 let mainWindow = null;
 let tray = null;
+let isQuitting = false;
 const configPath = path.join(app.getPath('userData'), 'app-config.json');
 
 // Helper to read config
@@ -35,8 +36,8 @@ function createWindow() {
   const savedScale = config.scale || 1.0;
   
   // Custom sizing math fitting our card size (320px width initially)
-  const initialWidth = Math.round(330 * savedScale);
-  const initialHeight = Math.round(530 * savedScale);
+  const initialWidth = Math.round((320 + 140) * savedScale);
+  const initialHeight = Math.round((480 + 200) * savedScale);
 
   const windowOptions = {
     width: initialWidth,
@@ -94,6 +95,13 @@ function createWindow() {
     }, 300);
   });
 
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -146,6 +154,7 @@ function createTray() {
     {
       label: 'Quit',
       click: () => {
+        isQuitting = true;
         app.quit();
       }
     }
@@ -193,9 +202,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  // Keep the app process alive in the system tray area
 });
 
 /* ═══════════════════════════════════════════════════════
@@ -253,9 +260,11 @@ ipcMain.handle('validate-license', async (event, rawKey) => {
   return { ok: false };
 });
 
-// Close Application
+// Close Application (Hide to tray area)
 ipcMain.on('close-app', () => {
-  app.quit();
+  if (mainWindow) {
+    mainWindow.hide();
+  }
 });
 
 // Set Height dynamically (e.g. on minimizing)
@@ -264,7 +273,7 @@ ipcMain.on('set-height', (event, height) => {
     const [w] = mainWindow.getSize();
     const config = readConfig();
     const scale = config.scale || 1.0;
-    const newHeight = Math.round((height + 120) * scale);
+    const newHeight = Math.round((height + 200) * scale);
     mainWindow.setSize(w, newHeight);
   }
 });
@@ -275,8 +284,8 @@ ipcMain.on('card-bounds', (event, bounds) => {
     const config = readConfig();
     const scale = config.scale || 1.0;
     // Resize Electron window to leave ample transparent padding so the card's deep blurred drop shadow doesn't get clipped
-    const targetW = Math.round((bounds.w + 120) * scale);
-    const targetH = Math.round((bounds.h + 120) * scale);
+    const targetW = Math.round((bounds.w + 140) * scale);
+    const targetH = Math.round((bounds.h + 200) * scale);
     
     // Safety minimums
     const currentW = Math.max(100, targetW);

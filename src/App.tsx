@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import overdeskLogo from './logo.svg';
 
 // Declaration to access global Electron API from preload script
 declare global {
@@ -579,6 +580,7 @@ export default function App() {
     return { x: 0, y: 0 };
   });
   const [isGripped, setIsGripped] = useState<boolean>(false);
+  const [cardHeight, setCardHeight] = useState<number>(480);
 
   const dragPointerRef = useRef<{
     dragging: boolean;
@@ -910,7 +912,7 @@ export default function App() {
 
   // Handle reporting dynamic visual bounding box to Electron to prevent clipping with ResizeObserver
   useEffect(() => {
-    if (!window.electronAPI || !cardRef.current) return;
+    if (!cardRef.current) return;
 
     let resizeTimer: any = null;
     const observer = new ResizeObserver(() => {
@@ -919,12 +921,15 @@ export default function App() {
       resizeTimer = setTimeout(() => {
         if (cardRef.current) {
           const rect = cardRef.current.getBoundingClientRect();
-          window.electronAPI?.cardBounds({
-            x: rect.left,
-            y: rect.top,
-            w: 320, // Standard exact card width constant
-            h: cardRef.current.offsetHeight,
-          });
+          if (window.electronAPI) {
+            window.electronAPI.cardBounds({
+              x: rect.left,
+              y: rect.top,
+              w: 320, // Standard exact card width constant
+              h: cardRef.current.offsetHeight,
+            });
+          }
+          setCardHeight(cardRef.current.offsetHeight);
         }
       }, 16); // ~1 frame debounce
     });
@@ -934,12 +939,15 @@ export default function App() {
     // Immediate measurement for swift loading bounds alignment
     if (cardRef.current) {
       const rect = cardRef.current.getBoundingClientRect();
-      window.electronAPI?.cardBounds({
-        x: rect.left,
-        y: rect.top,
-        w: 320,
-        h: cardRef.current.offsetHeight,
-      });
+      if (window.electronAPI) {
+        window.electronAPI.cardBounds({
+          x: rect.left,
+          y: rect.top,
+          w: 320,
+          h: cardRef.current.offsetHeight,
+        });
+      }
+      setCardHeight(cardRef.current.offsetHeight);
     }
 
     return () => {
@@ -1277,43 +1285,58 @@ export default function App() {
   const totalModeChecked = selections[currentMode]?.length || 0;
 
   return (
-    <>
+    <div
+      className="app-container"
+      style={{
+        width: '460px',
+        height: `${cardHeight + 200}px`,
+        transform: `scale(${scale})`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'transparent',
+        position: 'relative',
+        overflow: 'visible',
+      }}
+    >
       {/* Gumroad License validation screen */}
       {!licenseActive && (
         <div className="license-screen" id="license-screen">
-          <img 
-            className="license-logo" 
-            src="/src/logo.svg" 
-            alt="Overdesk Checklist Logo" 
-            style={{ width: '80px', height: '100px', objectFit: 'contain', marginBottom: '16px' }}
-            referrerPolicy="no-referrer"
-          />
-          <div className="license-title">Overdesk Checklist</div>
-          <div className="license-sub">
-            Enter your license key to activate.
-            <br />
-            Find your license key inside your Gumroad purchase receipt.
-          </div>
-          <input
-            className={`license-input ${licenseError ? 'error' : ''}`}
-            id="license-input"
-            type="text"
-            placeholder="E.g. XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
-            maxLength={36}
-            value={licenseInput}
-            onChange={handleLicenseInputChange}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') attemptActivation();
-            }}
-          />
-          <button className="license-btn" onClick={attemptActivation}>
-            Activate
-          </button>
-          
-          <div className="license-hint" style={{ fontSize: '11px', marginTop: '12px' }}>
-            <span style={{ color: 'rgba(255,255,255,0.4)' }}>
-              Get your license key on Gumroad: <a href="https://overdesk.gumroad.com/l/app3" target="_blank" rel="noreferrer" style={{ color: '#00ccff', textDecoration: 'underline' }}>overdesk.gumroad.com/l/app3</a>
-            </span>
+          <div className="license-card">
+            <img 
+              className="license-logo" 
+              src={overdeskLogo} 
+              alt="Overdesk Checklist Logo" 
+              style={{ width: '80px', height: '100px', objectFit: 'contain', marginBottom: '16px' }}
+              referrerPolicy="no-referrer"
+            />
+            <div className="license-title">Overdesk Checklist</div>
+            <div className="license-sub">
+              Enter your license key to activate.
+              <br />
+              Find your license key inside your Gumroad purchase receipt.
+            </div>
+            <input
+              className={`license-input ${licenseError ? 'error' : ''}`}
+              id="license-input"
+              type="text"
+              placeholder="E.g. XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+              maxLength={36}
+              value={licenseInput}
+              onChange={handleLicenseInputChange}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') attemptActivation();
+              }}
+            />
+            <button className="license-btn" onClick={attemptActivation}>
+              Activate
+            </button>
+            
+            <div className="license-hint" style={{ fontSize: '11px', marginTop: '12px' }}>
+              <span style={{ color: 'rgba(255,255,255,0.4)' }}>
+                Get your license key on Gumroad: <a href="https://overdesk.gumroad.com/l/app3" target="_blank" rel="noreferrer" style={{ color: '#00ccff', textDecoration: 'underline' }}>overdesk.gumroad.com/l/app3</a>
+              </span>
+            </div>
           </div>
         </div>
       )}
@@ -1329,7 +1352,7 @@ export default function App() {
         onPointerCancel={handleCardPointerUp}
         onDragStart={(e) => e.preventDefault()}
         style={{
-          transform: `translate(${translate.x}px, ${translate.y}px) scale(${isGripped ? scale * 1.035 : scale})`,
+          transform: `translate(${translate.x}px, ${translate.y}px) scale(${isGripped ? 1.035 : 1})`,
           boxShadow: isGripped ? `0 18px 50px 5px ${modes[currentMode]?.soft || 'var(--accent-soft)'}, 0 6px 18px rgba(0, 0, 0, 0.45)` : undefined,
           transition: isGripped ? 'transform 0s, box-shadow 0.2s ease' : 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease',
           cursor: isGripped ? 'grabbing' : undefined,
@@ -1604,9 +1627,52 @@ export default function App() {
               }}
             />
           ) : (
-            <h1 className={`title ${editMode ? 'editable' : ''}`} id="mode-title" onClick={startEditingTitle}>
-              {modes[currentMode]?.title || 'Precision'}
-            </h1>
+            <div className={`title-container-editable ${editMode ? 'can-edit' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h1
+                className={`title ${editMode ? 'editable' : ''}`}
+                id="mode-title"
+                onClick={startEditingTitle}
+                onMouseDown={(e) => {
+                  if (editMode) {
+                    e.stopPropagation();
+                    startEditingTitle();
+                  }
+                }}
+              >
+                {modes[currentMode]?.title || 'Precision'}
+              </h1>
+              {editMode && (
+                <button
+                  className="edit-title-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startEditingTitle();
+                  }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    startEditingTitle();
+                  }}
+                  title="Rename Mode"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '4px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: 0.6,
+                    color: 'var(--text)',
+                    transition: 'opacity 0.2s',
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </button>
+              )}
+            </div>
           )}
           <span className="mode-counter" id="mode-counter">
             {totalModeChecked}/{totalModeOptions}
@@ -1684,6 +1750,6 @@ export default function App() {
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

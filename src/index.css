@@ -13,10 +13,25 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: clip;
+  overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   user-select: none;
   background: transparent !important;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.app-container {
+  overflow: visible;
+  flex-shrink: 0;
+  will-change: transform;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -30,7 +45,9 @@ body.electron button, body.electron input, body.electron .option, body.electron 
 body.electron .edit-toggle, body.electron .close-btn, body.electron .add-btn, 
 body.electron .theme-switch, body.electron .minimize-pill, body.electron .minimize-bar,
 body.electron .resize-handle, body.electron .reset-wrap, body.electron .color-swatch, 
-body.electron .color-custom-wrap, body.electron a, body.electron select, body.electron .picker-grid {
+body.electron .color-custom-wrap, body.electron .title-wrap, body.electron .title, 
+body.electron .title-container-editable, body.electron .edit-title-btn,
+body.electron .title-input, body.electron .mode-label, body.electron a, body.electron select, body.electron .picker-grid {
   -webkit-app-region: no-drag;
 }
 
@@ -43,10 +60,16 @@ body.electron .color-custom-wrap, body.electron a, body.electron select, body.el
   width: 320px;
   border-radius: 36px;
   padding: 14px 20px 14px;
-  background: rgba(18, 14, 30, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  /* Added a beautiful deep ambient drop shadow and subtle soft colored glow */
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45), 0 0 40px 1px var(--accent-soft);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.0) 100%), var(--bg);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(40px) saturate(220%);
+  -webkit-backdrop-filter: blur(40px) saturate(220%);
+  /* Dual nested shadow system for true Apple Glass look: an inner edge highlight and luxurious layered ambient drop-shadows */
+  box-shadow: 
+    0 0 1px 1px rgba(255, 255, 255, 0.12) inset,
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 18px 45px -10px rgba(0, 0, 0, 0.65), 
+    0 0 40px 1px var(--accent-soft);
   display: flex;
   flex-direction: column;
   transform-origin: center center;
@@ -57,7 +80,7 @@ body.electron .color-custom-wrap, body.electron a, body.electron select, body.el
   
   --accent: rgba(110, 0, 210, 0.9);
   --accent-soft: rgba(130, 0, 255, 0.18);
-  --bg: rgba(28, 28, 34, 0.88);
+  --bg: rgba(0, 0, 0, 0.94);
   --text: #ffffff;
   --text-dim: rgba(255, 255, 255, 0.4);
   --text-mid: rgba(255, 255, 255, 0.75);
@@ -739,7 +762,11 @@ body.editing .option { cursor: default; }
   inset: 0;
   z-index: 50;
   border-radius: 36px;
-  background: rgba(13, 11, 22, 0.97);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.0) 100%), var(--bg);
+  backdrop-filter: blur(40px) saturate(220%);
+  -webkit-backdrop-filter: blur(40px) saturate(220%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 1px 1px rgba(255, 255, 255, 0.12) inset;
   display: none;
   flex-direction: column;
   padding: 13px 14px 12px;
@@ -1032,18 +1059,36 @@ body.editing .option { cursor: default; }
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: rgba(10, 6, 20, 0.97);
+  background: rgba(10, 10, 10, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.license-card {
+  width: 320px;
+  border-radius: 36px;
+  padding: 24px 20px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0.0) 100%), rgba(0, 0, 0, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(40px) saturate(220%);
+  -webkit-backdrop-filter: blur(40px) saturate(220%);
+  box-shadow: 
+    0 0 1px 1px rgba(255, 255, 255, 0.12) inset,
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 18px 45px -10px rgba(0, 0, 0, 0.65), 
+    0 0 40px 1px rgba(130, 0, 255, 0.12);
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 28px 22px;
   gap: 14px;
-  border-radius: 28px;
+  animation: cardIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .license-logo {
-  width: 52px;
-  height: 52px;
+  width: 72px;
+  height: 90px;
+  object-fit: contain;
   margin-bottom: 4px;
 }
 .license-title {
