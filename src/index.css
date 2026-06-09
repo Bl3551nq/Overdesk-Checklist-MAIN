@@ -45,6 +45,8 @@ body.electron .color-custom-wrap, body.electron a, body.electron select, body.el
   padding: 14px 20px 14px;
   background: rgba(18, 14, 30, 0.96);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  /* Added a beautiful deep ambient drop shadow and subtle soft colored glow */
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45), 0 0 40px 1px var(--accent-soft);
   display: flex;
   flex-direction: column;
   transform-origin: center center;
@@ -89,6 +91,8 @@ body.electron .color-custom-wrap, body.electron a, body.electron select, body.el
 .card.light {
   background: rgba(245, 245, 250, 0.98);
   border: 1px solid rgba(0, 0, 0, 0.08);
+  /* Added a beautiful high-contrast drop shadow for light mode */
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.16), 0 0 30px 1px rgba(0, 0, 0, 0.04);
   --text: #111111;
   --text-dim: rgba(0, 0, 0, 0.35);
   --text-mid: rgba(0, 0, 0, 0.7);

@@ -250,7 +250,7 @@ ipcMain.on('set-height', (event, height) => {
     const [w] = mainWindow.getSize();
     const config = readConfig();
     const scale = config.scale || 1.0;
-    const newHeight = Math.round((height + 15) * scale);
+    const newHeight = Math.round((height + 120) * scale);
     mainWindow.setSize(w, newHeight);
   }
 });
@@ -260,9 +260,9 @@ ipcMain.on('card-bounds', (event, bounds) => {
   if (mainWindow && bounds) {
     const config = readConfig();
     const scale = config.scale || 1.0;
-    // Resize Electron window to hug the card tightly, preserving transparency elsewhere
-    const targetW = Math.round((bounds.w + 20) * scale);
-    const targetH = Math.round((bounds.h + 20) * scale);
+    // Resize Electron window to leave ample transparent padding so the card's deep blurred drop shadow doesn't get clipped
+    const targetW = Math.round((bounds.w + 120) * scale);
+    const targetH = Math.round((bounds.h + 120) * scale);
     
     // Safety minimums
     const currentW = Math.max(100, targetW);

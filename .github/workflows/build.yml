@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-2019
+    runs-on: windows-latest
 
     steps:
       - name: Checkout Repository
@@ -23,7 +23,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: 20
           cache: 'npm'
 
       - name: Install System Dependencies
@@ -35,7 +35,7 @@ jobs:
       - name: Build Windows Executables (Electron Builder)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx --no-install electron-builder --win --x64 --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
+        run: npx --no-install electron-builder --win --publish always
 
       - name: Upload Installer Artifact
         uses: actions/upload-artifact@v4
