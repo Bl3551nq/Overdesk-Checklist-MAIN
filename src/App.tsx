@@ -603,6 +603,8 @@ export default function App() {
   const cardRef = useRef<HTMLDivElement>(null);
   const lastMinimizedRef = useRef<boolean>(minimized);
   const lastUnminimizedHeightRef = useRef<number>(480);
+  const transitionTimerRef = useRef<any>(null);
+  const isTransitioningRef = useRef<boolean>(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const listInputRef = useRef<HTMLInputElement>(null);
 
@@ -864,8 +866,6 @@ export default function App() {
   useEffect(() => {
     if (!cardRef.current) return;
 
-    let resizeTimer: any = null;
-
     const reportBounds = (forceHeight?: number) => {
       if (!cardRef.current) return;
       const rect = cardRef.current.getBoundingClientRect();
@@ -889,35 +889,50 @@ export default function App() {
 
     const isMinimizedTransition = lastMinimizedRef.current !== minimized;
 
-    // When we start to unminimize, instantly expand the window so there is plenty of room for transition
-    if (isMinimizedTransition && !minimized) {
-      reportBounds(lastUnminimizedHeightRef.current);
+    if (isMinimizedTransition) {
+      isTransitioningRef.current = true;
+      if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
+
+      if (!minimized) {
+        // Expanding (Unminimizing): Instantly expand Electron window to target tall unminimized size
+        reportBounds(lastUnminimizedHeightRef.current);
+        transitionTimerRef.current = setTimeout(() => {
+          isTransitioningRef.current = false;
+          reportBounds();
+          lastMinimizedRef.current = minimized;
+        }, 360);
+      } else {
+        // Collapsing (Minimizing): Keep window size as is during collapse visual, then shrink after transition
+        transitionTimerRef.current = setTimeout(() => {
+          isTransitioningRef.current = false;
+          reportBounds();
+          lastMinimizedRef.current = minimized;
+        }, 365);
+      }
+    } else {
+      lastMinimizedRef.current = minimized;
     }
 
     const observer = new ResizeObserver(() => {
-      // If expanding or collapsing (minimizing/unminimizing), defer measuring the final relaxed bounds
-      // for 385ms to allow GPU visual transitions to complete smoothly without window sizes clashing or causing jitter.
-      // Otherwise (checklist edits, scaling, drag events), report bounds immediately for pixel-perfect tracking.
-      if (isMinimizedTransition) {
-        if (resizeTimer) clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(() => {
-          reportBounds();
-          lastMinimizedRef.current = minimized;
-        }, 385);
-      } else {
-        reportBounds();
-        lastMinimizedRef.current = minimized;
-      }
+      // Ignore intermediate size shifts during active minimize/unminimize CSS transitions
+      if (isTransitioningRef.current) return;
+      
+      // Checklist edits, list item additions, theme changes, or dynamic height changes report instantly
+      reportBounds();
     });
 
     observer.observe(cardRef.current);
 
-    // Immediate measurement for swift loading bounds alignment
-    reportBounds();
+    // If not transitioning, adjust immediately
+    if (!isTransitioningRef.current) {
+      reportBounds();
+    }
 
     return () => {
       observer.disconnect();
-      if (resizeTimer) clearTimeout(resizeTimer);
+      if (transitionTimerRef.current) {
+        clearTimeout(transitionTimerRef.current);
+      }
     };
   }, [scale, minimized]);
 
@@ -1256,14 +1271,13 @@ export default function App() {
         width: '460px',
         height: '100%',
         transform: `scale(${scale})`,
+        transformOrigin: 'center center',
         display: 'flex',
-        alignItems: 'flex-start',
+        alignItems: 'center',
         justifyContent: 'center',
         background: 'transparent',
         position: 'relative',
         overflow: 'visible',
-        paddingTop: '100px',
-        boxSizing: 'border-box',
       }}
     >
       {/* Main checklist canvas card widget */}

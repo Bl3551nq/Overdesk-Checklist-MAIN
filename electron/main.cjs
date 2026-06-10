@@ -11,6 +11,11 @@ let cachedX = null;
 let cachedY = null;
 let cachedScale = null;
 let configCache = null;
+let isProgrammaticBoundsUpdate = false;
+let programmaticTimeout = null;
+let isScaling = false;
+let scaleCenterX = null;
+let scaleCenterY = null;
 const configPath = path.join(app.getPath('userData'), 'app-config.json');
 
 // Helper to read config
@@ -103,9 +108,10 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
-  // Save coordinates when window moves
+  // Save coordinates when window moves (only if NOT programmatic resize/drag scale)
   let moveTimeout;
   mainWindow.on('move', () => {
+    if (isProgrammaticBoundsUpdate || isScaling) return;
     if (mainWindow) {
       const [x, y] = mainWindow.getPosition();
       cachedX = x;
@@ -113,6 +119,7 @@ function createWindow() {
     }
     if (moveTimeout) clearTimeout(moveTimeout);
     moveTimeout = setTimeout(() => {
+      if (isProgrammaticBoundsUpdate || isScaling) return;
       if (mainWindow) {
         const [x, y] = mainWindow.getPosition();
         cachedX = x;
@@ -328,17 +335,27 @@ ipcMain.on('card-bounds', (event, bounds) => {
     let newX = cachedX;
     let newY = cachedY;
     
-    if (activeScale !== cachedScale) {
-      // Anchors the top-right corner of the card during scaling
-      const deltaScale = activeScale - cachedScale;
-      newX = Math.round(cachedX - 390 * deltaScale);
-      newY = Math.round(cachedY - 100 * deltaScale);
+    if (isScaling && scaleCenterX !== null && scaleCenterY !== null) {
+      // Anchors the absolute center of the window during active drag-and-resize scaling
+      newX = Math.round(scaleCenterX - targetW / 2);
+      newY = Math.round(scaleCenterY - targetH / 2);
+      cachedScale = activeScale;
+    } else if (activeScale !== cachedScale) {
+      // Scale proportionally from all axes at the same time (symmetrical expansion around the visual center)
+      const [currentW, currentH] = mainWindow.getSize();
+      const deltaW = targetW - currentW;
+      const deltaH = targetH - currentH;
+      newX = Math.round(cachedX - deltaW / 2);
+      newY = Math.round(cachedY - deltaH / 2);
       cachedScale = activeScale;
     }
     
     // Update cache proactively before the asynchronous window shift settles
     cachedX = newX;
     cachedY = newY;
+    
+    isProgrammaticBoundsUpdate = true;
+    if (programmaticTimeout) clearTimeout(programmaticTimeout);
     
     mainWindow.setBounds({
       x: newX,
@@ -347,15 +364,28 @@ ipcMain.on('card-bounds', (event, bounds) => {
       height: targetH
     });
     
+    programmaticTimeout = setTimeout(() => {
+      isProgrammaticBoundsUpdate = false;
+    }, 200);
+    
     writeConfig({ x: newX, y: newY, scale: activeScale });
   }
 });
 
 ipcMain.on('scale-start', () => {
-  // Can perform operations when custom drag scale starts
+  isScaling = true;
+  if (mainWindow) {
+    const [x, y] = mainWindow.getPosition();
+    const [w, h] = mainWindow.getSize();
+    scaleCenterX = x + w / 2;
+    scaleCenterY = y + h / 2;
+  }
 });
 
 ipcMain.on('scale-end', (event, scale) => {
+  isScaling = false;
+  scaleCenterX = null;
+  scaleCenterY = null;
   writeConfig({ scale });
 });
 
