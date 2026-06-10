@@ -1257,11 +1257,13 @@ export default function App() {
         height: '100%',
         transform: `scale(${scale})`,
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         justifyContent: 'center',
         background: 'transparent',
         position: 'relative',
         overflow: 'visible',
+        paddingTop: '100px',
+        boxSizing: 'border-box',
       }}
     >
       {/* Main checklist canvas card widget */}

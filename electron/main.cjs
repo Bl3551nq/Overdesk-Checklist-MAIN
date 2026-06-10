@@ -9,33 +9,49 @@ let tray = null;
 let isQuitting = false;
 let cachedX = null;
 let cachedY = null;
+let cachedScale = null;
+let configCache = null;
 const configPath = path.join(app.getPath('userData'), 'app-config.json');
 
 // Helper to read config
 function readConfig() {
+  if (configCache) return configCache;
   try {
     if (fs.existsSync(configPath)) {
-      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      configCache = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      return configCache;
     }
   } catch (err) {
     console.error('Error reading config:', err);
   }
-  return {};
+  configCache = {};
+  return configCache;
 }
 
 // Helper to write config
+let writeTimeout = null;
 function writeConfig(data) {
   try {
     const current = readConfig();
-    fs.writeFileSync(configPath, JSON.stringify({ ...current, ...data }, null, 2), 'utf8');
+    configCache = { ...current, ...data };
+    
+    if (writeTimeout) clearTimeout(writeTimeout);
+    writeTimeout = setTimeout(() => {
+      try {
+        fs.writeFileSync(configPath, JSON.stringify(configCache, null, 2), 'utf8');
+      } catch (err) {
+        console.error('Error writing config:', err);
+      }
+    }, 500); // 500ms debounce
   } catch (err) {
-    console.error('Error writing config:', err);
+    console.error('Error in writeConfig queue:', err);
   }
 }
 
 function createWindow() {
   const config = readConfig();
   const savedScale = config.scale || 1.0;
+  cachedScale = savedScale;
   
   // Custom sizing math fitting our card size (320px width initially)
   const initialWidth = Math.round((320 + 140) * savedScale);
@@ -305,15 +321,20 @@ ipcMain.on('card-bounds', (event, bounds) => {
       cachedX = currentX;
       cachedY = currentY;
     }
+    if (cachedScale === null) {
+      cachedScale = activeScale;
+    }
     
-    const [currentW, currentH] = mainWindow.getSize();
+    let newX = cachedX;
+    let newY = cachedY;
     
-    // Calculate off-axis shifts to lock the visual center in place
-    const deltaW = targetW - currentW;
-    const deltaH = targetH - currentH;
-    
-    const newX = Math.round(cachedX - deltaW / 2);
-    const newY = Math.round(cachedY - deltaH / 2);
+    if (activeScale !== cachedScale) {
+      // Anchors the top-right corner of the card during scaling
+      const deltaScale = activeScale - cachedScale;
+      newX = Math.round(cachedX - 390 * deltaScale);
+      newY = Math.round(cachedY - 100 * deltaScale);
+      cachedScale = activeScale;
+    }
     
     // Update cache proactively before the asynchronous window shift settles
     cachedX = newX;
