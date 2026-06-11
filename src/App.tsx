@@ -1386,10 +1386,11 @@ export default function App() {
         width: '460px',
         height: '100%',
         transform: `scale(${scale})`,
-        transformOrigin: 'center center',
+        transformOrigin: 'top center',
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         justifyContent: 'center',
+        paddingTop: '100px',
         background: 'transparent',
         position: 'relative',
         overflow: 'visible',
@@ -1410,7 +1411,7 @@ export default function App() {
           boxShadow: !licenseActive ? 'none' : (isGripped ? `0 18px 50px 5px ${modes[currentMode]?.soft || 'var(--accent-soft)'}, 0 6px 18px rgba(0, 0, 0, 0.45)` : undefined),
           transition: isGripped ? 'transform 0s, box-shadow 0.2s ease' : 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, padding 0.35s cubic-bezier(0.4, 0, 0.2, 1), min-height 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
           cursor: isGripped ? 'grabbing' : undefined,
-          minHeight: settingsOpen ? '390px' : undefined,
+          minHeight: (settingsOpen && !minimized) ? '390px' : undefined,
         }}
       >
         {!licenseActive ? (
@@ -1508,8 +1509,13 @@ export default function App() {
           <div
             className="minimize-bar"
             onClick={() => {
-              setMinimized(!minimized);
-              if (!minimized && editMode) setEditMode(false);
+              const nextMinimized = !minimized;
+              setMinimized(nextMinimized);
+              if (nextMinimized) {
+                if (editMode) setEditMode(false);
+                if (settingsOpen) setSettingsOpen(false);
+                if (pickerOpen) setPickerOpen(false);
+              }
             }}
           >
             <div className="minimize-pill"></div>

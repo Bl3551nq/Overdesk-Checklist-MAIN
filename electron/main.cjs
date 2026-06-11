@@ -161,8 +161,15 @@ function createTray() {
 
   let trayIcon;
   if (fs.existsSync(iconPath)) {
-    // Resize down to standard 16x16 system tray image size
-    trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+    // Windows supports 32x32 or 48x48 for High-DPI screens. macOS standard size is 16x16 with optional template styling.
+    if (process.platform === 'win32') {
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 32, height: 32, quality: 'best' });
+    } else if (process.platform === 'darwin') {
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16, quality: 'best' });
+      trayIcon.setTemplateImage(true);
+    } else {
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 24, height: 24, quality: 'best' });
+    }
   } else {
     trayIcon = nativeImage.createEmpty();
   }
@@ -345,17 +352,26 @@ ipcMain.on('card-bounds', (event, bounds) => {
     let newX = currentX;
     let newY = currentY;
     
+    const isScaleChanged = cachedScale !== null && Math.abs(activeScale - cachedScale) > 0.01;
+    
     if (isScaling && scaleCenterX !== null && scaleCenterY !== null) {
       // Anchors the absolute center of the window during active drag-and-resize scaling
       newX = Math.round(scaleCenterX - targetW / 2);
       newY = Math.round(scaleCenterY - targetH / 2);
       cachedScale = activeScale;
-    } else {
-      // Anchors the visual center of the window for all bounds adjustments (scaling and minimizing/expanding)
+    } else if (isScaleChanged) {
+      // Anchors the visual center of the window if scale changed discretely (e.g. from settings option)
       const centerX = currentX + currentW / 2;
       const centerY = currentY + currentH / 2;
       newX = Math.round(centerX - targetW / 2);
       newY = Math.round(centerY - targetH / 2);
+      cachedScale = activeScale;
+    } else {
+      // Keeps the top-left of the window perfectly constant for normal height updates 
+      // (minimizing/expanding, adding/removing checklist items, settings toggles)
+      // to guarantee zero visual shift mismatch and zero flickering.
+      newX = currentX;
+      newY = currentY;
       cachedScale = activeScale;
     }
     
@@ -412,7 +428,15 @@ ipcMain.on('save-icon', (event, dataUrl) => {
     
     // Dynamically update tray icon
     if (tray) {
-      const trayImg = nativeImage.createFromPath(customIconPath).resize({ width: 16, height: 16 });
+      let trayImg;
+      if (process.platform === 'win32') {
+        trayImg = nativeImage.createFromPath(customIconPath).resize({ width: 32, height: 32, quality: 'best' });
+      } else if (process.platform === 'darwin') {
+        trayImg = nativeImage.createFromPath(customIconPath).resize({ width: 16, height: 16, quality: 'best' });
+        trayImg.setTemplateImage(true);
+      } else {
+        trayImg = nativeImage.createFromPath(customIconPath).resize({ width: 24, height: 24, quality: 'best' });
+      }
       tray.setImage(trayImg);
     }
   } catch (err) {
