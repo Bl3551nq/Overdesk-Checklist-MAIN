@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-const overdeskLogo = 'https://raw.githubusercontent.com/Bl3551nq/Overdesk-Logos/refs/heads/main/OVERDESK-checklist.svg';
+import overdeskLogo from './logo.svg';
 
 // Declaration to access global Electron API from preload script
 declare global {
@@ -998,6 +998,7 @@ export default function App() {
     };
 
     const isMinimizedTransition = lastMinimizedRef.current !== minimized;
+    lastMinimizedRef.current = minimized;
 
     if (isMinimizedTransition) {
       isTransitioningRef.current = true;
@@ -1009,18 +1010,14 @@ export default function App() {
         transitionTimerRef.current = setTimeout(() => {
           isTransitioningRef.current = false;
           reportBounds();
-          lastMinimizedRef.current = minimized;
         }, 360);
       } else {
         // Collapsing (Minimizing): Keep window size as is during collapse visual, then shrink after transition
         transitionTimerRef.current = setTimeout(() => {
           isTransitioningRef.current = false;
           reportBounds();
-          lastMinimizedRef.current = minimized;
         }, 365);
       }
-    } else {
-      lastMinimizedRef.current = minimized;
     }
 
     const observer = new ResizeObserver(() => {
