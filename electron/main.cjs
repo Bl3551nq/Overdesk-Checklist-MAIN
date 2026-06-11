@@ -294,6 +294,13 @@ ipcMain.handle('validate-license', async (event, rawKey) => {
   return { ok: false };
 });
 
+// Dynamic click-through/ignore-mouse-events handling for transparent shadow padding area
+ipcMain.on('set-ignore-mouse-events', (event, ignore, options) => {
+  if (mainWindow) {
+    mainWindow.setIgnoreMouseEvents(ignore, options);
+  }
+});
+
 // Close Application (Hide to tray area)
 ipcMain.on('close-app', () => {
   if (mainWindow) {
@@ -322,9 +329,12 @@ ipcMain.on('card-bounds', (event, bounds) => {
     const targetW = Math.max(100, Math.round((bounds.w + 140) * activeScale));
     const targetH = Math.max(50, Math.round((bounds.h + 200) * activeScale));
     
+    // Fetch current position and size
+    const [currentX, currentY] = mainWindow.getPosition();
+    const [currentW, currentH] = mainWindow.getSize();
+    
     // Initialize or read position from cached values
     if (cachedX === null || cachedY === null) {
-      const [currentX, currentY] = mainWindow.getPosition();
       cachedX = currentX;
       cachedY = currentY;
     }
@@ -332,21 +342,20 @@ ipcMain.on('card-bounds', (event, bounds) => {
       cachedScale = activeScale;
     }
     
-    let newX = cachedX;
-    let newY = cachedY;
+    let newX = currentX;
+    let newY = currentY;
     
     if (isScaling && scaleCenterX !== null && scaleCenterY !== null) {
       // Anchors the absolute center of the window during active drag-and-resize scaling
       newX = Math.round(scaleCenterX - targetW / 2);
       newY = Math.round(scaleCenterY - targetH / 2);
       cachedScale = activeScale;
-    } else if (activeScale !== cachedScale) {
-      // Scale proportionally from all axes at the same time (symmetrical expansion around the visual center)
-      const [currentW, currentH] = mainWindow.getSize();
-      const deltaW = targetW - currentW;
-      const deltaH = targetH - currentH;
-      newX = Math.round(cachedX - deltaW / 2);
-      newY = Math.round(cachedY - deltaH / 2);
+    } else {
+      // Anchors the visual center of the window for all bounds adjustments (scaling and minimizing/expanding)
+      const centerX = currentX + currentW / 2;
+      const centerY = currentY + currentH / 2;
+      newX = Math.round(centerX - targetW / 2);
+      newY = Math.round(centerY - targetH / 2);
       cachedScale = activeScale;
     }
     

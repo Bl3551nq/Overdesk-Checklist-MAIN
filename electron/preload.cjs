@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cardBounds: (bounds) => ipcRenderer.send('card-bounds', bounds),
   scaleStart: () => ipcRenderer.send('scale-start'),
   scaleEnd: (scale) => ipcRenderer.send('scale-end', scale),
+  setIgnoreMouseEvents: (ignore, options) => ipcRenderer.send('set-ignore-mouse-events', ignore, options),
   saveIcon: (dataUrl) => ipcRenderer.send('save-icon', dataUrl),
   installUpdate: () => ipcRenderer.send('install-update'),
   onUpdateAvailable: (cb) => {

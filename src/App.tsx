@@ -12,6 +12,7 @@ declare global {
       cardBounds: (bounds: { x: number; y: number; w: number; h: number; scale?: number }) => void;
       scaleStart: () => void;
       scaleEnd: (scale: number) => void;
+      setIgnoreMouseEvents: (ignore: boolean, options?: { forward: boolean }) => void;
       installUpdate: () => void;
       onUpdateAvailable: (cb: (version: string) => void) => void;
       onUpdateDownloaded: (cb: () => void) => void;
@@ -977,6 +978,42 @@ export default function App() {
       window.removeEventListener('touchend', handleStop);
     };
   }, [scale]);
+
+  // Handle click-through transparency for regions outside the Visual Card element
+  useEffect(() => {
+    if (!window.electronAPI) return;
+
+    const handleWindowMouseMove = (e: MouseEvent) => {
+      if (!cardRef.current) return;
+
+      const rect = cardRef.current.getBoundingClientRect();
+      const padding = 6; // micro-padding buffer
+      const isInsideRect =
+        e.clientX >= rect.left - padding &&
+        e.clientX <= rect.right + padding &&
+        e.clientY >= rect.top - padding &&
+        e.clientY <= rect.bottom + padding;
+
+      const isOverCard = isInsideRect || cardRef.current.contains(e.target as Node);
+      
+      // If we are actively resizing, dragging, we must capture mouse events absolutely
+      const forceCapture = isGripped || sizingRef.current?.dragging;
+
+      if (isOverCard || forceCapture) {
+        window.electronAPI.setIgnoreMouseEvents(false);
+      } else {
+        window.electronAPI.setIgnoreMouseEvents(true, { forward: true });
+      }
+    };
+
+    window.addEventListener('mousemove', handleWindowMouseMove);
+    return () => {
+      window.removeEventListener('mousemove', handleWindowMouseMove);
+      if (window.electronAPI) {
+        window.electronAPI.setIgnoreMouseEvents(false);
+      }
+    };
+  }, [isGripped]);
 
   // ── Gumroad License verification triggering ──
   const formatLicenseKey = (val: string) => {
