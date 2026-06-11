@@ -422,6 +422,17 @@ body.editing .icon-btn::after {
   transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1), margin 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.mode-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+  margin-bottom: 4px;
+  width: 100%;
+  flex-shrink: 0;
+  transition: margin 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 .title-wrap {
   margin-bottom: 12px;
   flex-shrink: 0;
@@ -525,6 +536,14 @@ body.editing .icon-btn::after {
   max-height: 0;
   pointer-events: none;
   margin: 0;
+}
+.card.minimized .mode-label {
+  display: none !important;
+}
+.card.minimized .mode-row {
+  justify-content: flex-end !important;
+  margin-top: 15px !important;
+  margin-bottom: 2px !important;
 }
 
 .scroll-area {

@@ -1866,7 +1866,7 @@ export default function App() {
         )}
 
         {/* Text Header Mode Descriptions */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', marginTop: '4px' }}>
+        <div className="mode-row">
           <p className="mode-label" style={{ margin: 0 }}>Mode</p>
           {showCountdown && (
             isEditingTimer ? (
