@@ -467,12 +467,95 @@ const DEFAULT_MODES: Record<string, ModeDetail> = {
   },
 };
 
+// Play the high-quality Princess Bell MP3 chime repeated 5 times
+const playModernChime = () => {
+  try {
+    let playCount = 0;
+    const playNext = () => {
+      if (playCount >= 5) return;
+      const audio = new Audio("https://raw.githubusercontent.com/Bl3551nq/bell-sound/main/princess_bell.mp3");
+      audio.volume = 0.8;
+      audio.addEventListener('ended', () => {
+        playCount++;
+        playNext();
+      });
+      audio.play().catch((err) => {
+        console.warn("Audio play failed or was blocked by browser autoplay restrictions:", err);
+      });
+    };
+    playNext();
+  } catch (e) {
+    console.error('Failed to play bell audio:', e);
+  }
+};
+
+const formatTime = (secs: number): string => {
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+};
+
 export default function App() {
   // ── State ──
   const [currentMode, setCurrentMode] = useState<string>('sync');
   const [editMode, setEditMode] = useState<boolean>(false);
   const [isLight, setIsLight] = useState<boolean>(false);
   const [minimized, setMinimized] = useState<boolean>(false);
+
+  // Countdown Timer State
+  const [showCountdown, setShowCountdown] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('fm_show_countdown');
+      return saved !== 'false';
+    } catch (e) {
+      return true;
+    }
+  });
+
+  const [countdownDuration, setCountdownDuration] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('fm_countdown_duration');
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        if (parsed > 0) return parsed;
+      }
+    } catch (e) {}
+    return 300; // defaults to 5 minutes
+  });
+
+  const [countdownTimeLeft, setCountdownTimeLeft] = useState<number>(countdownDuration);
+  const [isTimerRunning, setIsTimerRunning] = useState<boolean>(false);
+  const [isEditingTimer, setIsEditingTimer] = useState<boolean>(false);
+  const [editHH, setEditHH] = useState<string>('00');
+  const [editMM, setEditMM] = useState<string>('00');
+  const [editSS, setEditSS] = useState<string>('00');
+
+  const [alarmEnabled, setAlarmEnabled] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('fm_alarm_enabled');
+      return saved !== 'false';
+    } catch (e) {
+      return true;
+    }
+  });
+
+  const handleShowCountdownChange = (val: boolean) => {
+    setShowCountdown(val);
+    localStorage.setItem('fm_show_countdown', String(val));
+  };
+
+  const handleCountdownDurationChange = (val: number) => {
+    setCountdownDuration(val);
+    setCountdownTimeLeft(val);
+    setIsTimerRunning(false);
+    localStorage.setItem('fm_countdown_duration', String(val));
+  };
+
+  const handleAlarmEnabledChange = (val: boolean) => {
+    setAlarmEnabled(val);
+    localStorage.setItem('fm_alarm_enabled', String(val));
+  };
 
   // License State
   const [licenseActive, setLicenseActive] = useState<boolean>(true); // active by default in web preview
@@ -546,7 +629,7 @@ export default function App() {
       const saved = localStorage.getItem('fm_scale');
       if (saved) {
         const parsed = parseFloat(saved);
-        if (parsed >= 0.6 && parsed <= 1.8) return parsed;
+        if (parsed >= 0.4 && parsed <= 2.2) return parsed;
       }
     } catch (e) {}
     return 1.0;
@@ -555,6 +638,7 @@ export default function App() {
   // Customizer picker state
   const [pickerOpen, setPickerOpen] = useState<boolean>(false);
   const [pickerTargetMode, setPickerTargetMode] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
 
   // Title focus, item editing tracking
   const [editingTitle, setEditingTitle] = useState<boolean>(false);
@@ -619,6 +703,11 @@ export default function App() {
         curr.closest('input') ||
         curr.closest('.icon-btn') ||
         curr.closest('.edit-toggle') ||
+        curr.closest('.settings-toggle') ||
+        curr.closest('#settings-panel') ||
+        curr.closest('.countdown-timer') ||
+        curr.closest('.countdown-timer-edit') ||
+        curr.closest('#countdown-timer-widget') ||
         curr.closest('.close-btn') ||
         curr.closest('.add-btn') ||
         curr.closest('.theme-switch') ||
@@ -835,6 +924,26 @@ export default function App() {
     };
   }, [editMode]);
 
+  // Countdown Timer ticking loop
+  useEffect(() => {
+    if (!isTimerRunning) return;
+
+    const timer = setInterval(() => {
+      setCountdownTimeLeft((prev) => {
+        if (prev <= 1) {
+          setIsTimerRunning(false);
+          if (alarmEnabled) {
+            playModernChime();
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isTimerRunning, alarmEnabled]);
+
   // Dynamic custom high-resolution system-tray & window icon canvas render pipeline
   useEffect(() => {
     if (typeof window !== 'undefined' && (window as any).electronAPI) {
@@ -937,47 +1046,19 @@ export default function App() {
     };
   }, [scale, minimized]);
 
-  // ── Custom Sizing drag logic ──
+  // ── Programmatic Scaling Configurations ──
   const sizingRef = useRef({ dragging: false, startX: 0, startScale: 1.0 });
+  const handleSizingMouseDown = () => {};
 
-  const handleSizingMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
-    sizingRef.current.dragging = true;
-    sizingRef.current.startX = 'touches' in e ? e.touches[0].screenX : e.screenX;
-    sizingRef.current.startScale = scale;
-    window.electronAPI?.scaleStart();
-    document.body.style.userSelect = 'none';
+  const handleScaleChange = (val: number) => {
+    setScale(val);
+    if (window.electronAPI) {
+      window.electronAPI.scaleStart();
+      setTimeout(() => {
+        window.electronAPI?.scaleEnd(val);
+      }, 50);
+    }
   };
-
-  useEffect(() => {
-    const handleMove = (e: MouseEvent | TouchEvent) => {
-      if (!sizingRef.current.dragging) return;
-      const screenX = 'touches' in e ? e.touches[0].screenX : (e as MouseEvent).screenX;
-      const deltaX = sizingRef.current.startX - screenX;
-      const computedScale = Math.min(1.8, Math.max(0.6, sizingRef.current.startScale + deltaX / 300));
-      setScale(parseFloat(computedScale.toFixed(4)));
-    };
-
-    const handleStop = () => {
-      if (!sizingRef.current.dragging) return;
-      sizingRef.current.dragging = false;
-      document.body.style.userSelect = '';
-      if (window.electronAPI) {
-        window.electronAPI.scaleEnd(scale);
-      }
-    };
-
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleStop);
-    window.addEventListener('touchmove', handleMove, { passive: false });
-    window.addEventListener('touchend', handleStop);
-
-    return () => {
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleStop);
-      window.removeEventListener('touchmove', handleMove);
-      window.removeEventListener('touchend', handleStop);
-    };
-  }, [scale]);
 
   // Handle click-through transparency for regions outside the Visual Card element
   useEffect(() => {
@@ -1330,8 +1411,9 @@ export default function App() {
         style={{
           transform: `translate(${translate.x}px, ${translate.y}px) scale(${isGripped ? 1.035 : 1})`,
           boxShadow: !licenseActive ? 'none' : (isGripped ? `0 18px 50px 5px ${modes[currentMode]?.soft || 'var(--accent-soft)'}, 0 6px 18px rgba(0, 0, 0, 0.45)` : undefined),
-          transition: isGripped ? 'transform 0s, box-shadow 0.2s ease' : 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, padding 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
+          transition: isGripped ? 'transform 0s, box-shadow 0.2s ease' : 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, padding 0.35s cubic-bezier(0.4, 0, 0.2, 1), min-height 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
           cursor: isGripped ? 'grabbing' : undefined,
+          minHeight: settingsOpen ? '390px' : undefined,
         }}
       >
         {!licenseActive ? (
@@ -1374,12 +1456,6 @@ export default function App() {
           </div>
         ) : (
           <>
-        {/* Aspect Sizer Handle (Draggable resize left-bar) */}
-        <div className="resize-handle" id="resize-handle" onMouseDown={handleSizingMouseDown} onTouchStart={handleSizingMouseDown}></div>
-
-        {/* Floating corner indicator block */}
-        <div className="drag-corner" id="drag-corner"></div>
-
         {/* Automatic updates banner notifier */}
         <div className={`update-banner ${updateAvailable ? 'show' : ''}`} id="update-banner">
           <div className="update-banner-text">
@@ -1451,11 +1527,28 @@ export default function App() {
               </svg>
             </button>
             <button
+              className={`settings-toggle ${settingsOpen ? 'on' : ''}`}
+              id="settings-toggle"
+              onClick={() => {
+                if (minimized) setMinimized(false);
+                setSettingsOpen(!settingsOpen);
+                setPickerOpen(false);
+                setEditMode(false);
+              }}
+              title="Global Settings"
+            >
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </button>
+            <button
               className={`edit-toggle ${editMode ? 'on' : ''}`}
               id="edit-toggle"
               onClick={() => {
                 if (minimized) setMinimized(false);
                 setEditMode(!editMode);
+                setSettingsOpen(false);
                 setEditingTitle(false);
                 setEditingItemIdx(null);
               }}
@@ -1626,8 +1719,481 @@ export default function App() {
           </div>
         )}
 
+        {/* Global Settings Panel overlay */}
+        {settingsOpen && (
+          <div className="icon-picker open" id="settings-panel">
+            <div className="picker-header">
+              <span className="picker-title">Settings</span>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <button
+                  className="picker-done"
+                  onClick={() => setSettingsOpen(false)}
+                  title="Done"
+                  style={{ display: 'flex', alignItems: 'center' }}
+                >
+                  <svg viewBox="0 0 24 24" style={{ width: '13px', height: '13px', marginRight: '4px' }}>
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  Done
+                </button>
+              </div>
+            </div>
+
+            <div className="settings-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '12px 8px 16px', overflowY: 'hidden', flex: 1 }}>
+              <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <span className="setting-label" style={{ fontSize: '10px', color: isLight ? 'rgba(0,0,0,0.45)' : 'rgba(255, 255, 255, 0.45)', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 'bold' }}>Window Scale</span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', width: '100%' }}>
+                  {[2, 1.5, 1.2, 1, 0.7, 0.5].map((val) => {
+                    const isSelected = Math.abs(scale - val) < 0.01;
+                    const label = val === 2 ? 'x2'
+                                : val === 1.5 ? 'x1.5'
+                                : val === 1.2 ? 'x1.2'
+                                : val === 1 ? 'x1'
+                                : val === 0.7 ? 'x0.7'
+                                : 'x0.5';
+                    return (
+                      <button
+                        key={val}
+                        onClick={() => handleScaleChange(val)}
+                        className="scale-select-btn"
+                        style={{
+                          padding: '7px 4px',
+                          borderRadius: '12px',
+                          background: isSelected ? 'var(--accent)' : (isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)'),
+                          border: '1px solid ' + (isSelected ? 'var(--accent)' : 'transparent'),
+                          color: isSelected ? '#fff' : (isLight ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.7)'),
+                          fontWeight: '600',
+                          fontSize: '11px',
+                          cursor: 'pointer',
+                          transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid var(--divider)', paddingTop: '10px' }}>
+                <span className="setting-label" style={{ fontSize: '10px', color: isLight ? 'rgba(0,0,0,0.45)' : 'rgba(255, 255, 255, 0.45)', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 'bold' }}>Countdown Display</span>
+                <div style={{ display: 'flex', gap: '6px', width: '100%' }}>
+                  <button
+                    onClick={() => handleShowCountdownChange(true)}
+                    style={{
+                      flex: 1,
+                      padding: '7px 4px',
+                      borderRadius: '12px',
+                      background: showCountdown ? 'var(--accent)' : (isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)'),
+                      border: '1px solid ' + (showCountdown ? 'var(--accent)' : 'transparent'),
+                      color: showCountdown ? '#fff' : (isLight ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.7)'),
+                      fontWeight: '600',
+                      fontSize: '11px',
+                      cursor: 'pointer',
+                      transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+                    }}
+                  >
+                    Shown
+                  </button>
+                  <button
+                    onClick={() => handleShowCountdownChange(false)}
+                    style={{
+                      flex: 1,
+                      padding: '7px 4px',
+                      borderRadius: '12px',
+                      background: !showCountdown ? 'var(--accent)' : (isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)'),
+                      border: '1px solid ' + (!showCountdown ? 'var(--accent)' : 'transparent'),
+                      color: !showCountdown ? '#fff' : (isLight ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.7)'),
+                      fontWeight: '600',
+                      fontSize: '11px',
+                      cursor: 'pointer',
+                      transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+                    }}
+                  >
+                    Hidden
+                  </button>
+                </div>
+              </div>
+
+
+
+              <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid var(--divider)', paddingTop: '10px' }}>
+                <span className="setting-label" style={{ fontSize: '10px', color: isLight ? 'rgba(0,0,0,0.45)' : 'rgba(255, 255, 255, 0.45)', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 'bold' }}>Completion Alarm</span>
+                <div style={{ display: 'flex', gap: '6px', width: '100%' }}>
+                  <button
+                    onClick={() => handleAlarmEnabledChange(true)}
+                    style={{
+                      flex: 1,
+                      padding: '7px 4px',
+                      borderRadius: '12px',
+                      background: alarmEnabled ? 'var(--accent)' : (isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)'),
+                      border: '1px solid ' + (alarmEnabled ? 'var(--accent)' : 'transparent'),
+                      color: alarmEnabled ? '#fff' : (isLight ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.7)'),
+                      fontWeight: '600',
+                      fontSize: '11px',
+                      cursor: 'pointer',
+                      transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+                    }}
+                  >
+                    Alarm On
+                  </button>
+                  <button
+                    onClick={() => handleAlarmEnabledChange(false)}
+                    style={{
+                      flex: 1,
+                      padding: '7px 4px',
+                      borderRadius: '12px',
+                      background: !alarmEnabled ? 'var(--accent)' : (isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)'),
+                      border: '1px solid ' + (!alarmEnabled ? 'var(--accent)' : 'transparent'),
+                      color: !alarmEnabled ? '#fff' : (isLight ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.7)'),
+                      fontWeight: '600',
+                      fontSize: '11px',
+                      cursor: 'pointer',
+                      transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+                    }}
+                  >
+                    Alarm Off
+                  </button>
+                </div>
+
+
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Text Header Mode Descriptions */}
-        <p className="mode-label">Mode</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', marginTop: '4px' }}>
+          <p className="mode-label" style={{ margin: 0 }}>Mode</p>
+          {showCountdown && (
+            isEditingTimer ? (
+              <div
+                className="countdown-timer-edit"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '3px',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  color: isLight ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.85)',
+                  background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)',
+                  padding: '3px 8px',
+                  borderRadius: '999px',
+                  border: '1px solid ' + (isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.15)'),
+                  userSelect: 'none',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <input
+                  type="text"
+                  maxLength={2}
+                  value={editHH}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '').slice(0, 2);
+                    setEditHH(val);
+                  }}
+                  onBlur={() => {
+                    setEditHH((prev) => prev.padStart(2, '0'));
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const finalH = parseInt(editHH, 10) || 0;
+                      const finalM = parseInt(editMM, 10) || 0;
+                      const finalS = parseInt(editSS, 10) || 0;
+                      const totalSecs = (finalH * 3600) + (finalM * 60) + finalS;
+                      if (totalSecs > 0) {
+                        setCountdownDuration(totalSecs);
+                        setCountdownTimeLeft(totalSecs);
+                        localStorage.setItem('fm_countdown_duration', String(totalSecs));
+                      }
+                      setIsEditingTimer(false);
+                    }
+                  }}
+                  style={{
+                    width: '22px',
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'inherit',
+                    fontFamily: 'var(--font-mono), monospace',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    padding: 0,
+                    textAlign: 'center',
+                    outline: 'none',
+                    margin: 0,
+                  }}
+                  title="Hours"
+                  onFocus={(e) => e.target.select()}
+                />
+                <span style={{ opacity: 0.5 }}>:</span>
+                <input
+                  type="text"
+                  maxLength={2}
+                  value={editMM}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '').slice(0, 2);
+                    setEditMM(val);
+                  }}
+                  onBlur={() => {
+                    setEditMM((prev) => prev.padStart(2, '0'));
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const finalH = parseInt(editHH, 10) || 0;
+                      const finalM = parseInt(editMM, 10) || 0;
+                      const finalS = parseInt(editSS, 10) || 0;
+                      const totalSecs = (finalH * 3600) + (finalM * 60) + finalS;
+                      if (totalSecs > 0) {
+                        setCountdownDuration(totalSecs);
+                        setCountdownTimeLeft(totalSecs);
+                        localStorage.setItem('fm_countdown_duration', String(totalSecs));
+                      }
+                      setIsEditingTimer(false);
+                    }
+                  }}
+                  style={{
+                    width: '22px',
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'inherit',
+                    fontFamily: 'var(--font-mono), monospace',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    padding: 0,
+                    textAlign: 'center',
+                    outline: 'none',
+                    margin: 0,
+                  }}
+                  title="Minutes"
+                  onFocus={(e) => e.target.select()}
+                />
+                <span style={{ opacity: 0.5 }}>:</span>
+                <input
+                  type="text"
+                  maxLength={2}
+                  value={editSS}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '').slice(0, 2);
+                    setEditSS(val);
+                  }}
+                  onBlur={() => {
+                    setEditSS((prev) => prev.padStart(2, '0'));
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const finalH = parseInt(editHH, 10) || 0;
+                      const finalM = parseInt(editMM, 10) || 0;
+                      const finalS = parseInt(editSS, 10) || 0;
+                      const totalSecs = (finalH * 3600) + (finalM * 60) + finalS;
+                      if (totalSecs > 0) {
+                        setCountdownDuration(totalSecs);
+                        setCountdownTimeLeft(totalSecs);
+                        localStorage.setItem('fm_countdown_duration', String(totalSecs));
+                      }
+                      setIsEditingTimer(false);
+                    }
+                  }}
+                  style={{
+                    width: '22px',
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'inherit',
+                    fontFamily: 'var(--font-mono), monospace',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    padding: 0,
+                    textAlign: 'center',
+                    outline: 'none',
+                    margin: 0,
+                  }}
+                  title="Seconds"
+                  onFocus={(e) => e.target.select()}
+                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '4px', borderLeft: '1px solid ' + (isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.2)'), paddingLeft: '6px' }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const finalH = parseInt(editHH, 10) || 0;
+                      const finalM = parseInt(editMM, 10) || 0;
+                      const finalS = parseInt(editSS, 10) || 0;
+                      const totalSecs = (finalH * 3600) + (finalM * 60) + finalS;
+                      if (totalSecs > 0) {
+                        setCountdownDuration(totalSecs);
+                        setCountdownTimeLeft(totalSecs);
+                        localStorage.setItem('fm_countdown_duration', String(totalSecs));
+                      }
+                      setIsEditingTimer(false);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--accent)',
+                      opacity: 0.9,
+                      transition: 'opacity 0.15s',
+                    }}
+                    title="Save"
+                  >
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsEditingTimer(false);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: isLight ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.45)',
+                      opacity: 0.8,
+                      transition: 'opacity 0.15s',
+                    }}
+                    title="Cancel"
+                  >
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                className={`countdown-timer ${isTimerRunning ? 'running' : 'paused'}`}
+                id="countdown-timer-widget"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  color: isTimerRunning ? 'var(--accent)' : 'var(--text-dim)',
+                  background: isTimerRunning ? 'var(--accent-soft)' : (isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)'),
+                  padding: '3px 8px',
+                  borderRadius: '999px',
+                  border: '1px solid ' + (isTimerRunning ? 'var(--accent)' : 'transparent'),
+                  userSelect: 'none',
+                  transition: 'all 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
+                  cursor: 'pointer',
+                }}
+                onClick={() => setIsTimerRunning(!isTimerRunning)}
+                title={isTimerRunning ? "Pause timer" : "Start timer"}
+              >
+                <span
+                  style={{
+                    fontFamily: 'var(--font-mono), monospace',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  {formatTime(countdownTimeLeft)}
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsTimerRunning(!isTimerRunning);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'inherit',
+                      opacity: 0.8,
+                      transition: 'opacity 0.15s',
+                    }}
+                    title={isTimerRunning ? "Pause Timer" : "Start Timer"}
+                  >
+                    {isTimerRunning ? (
+                      <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor">
+                        <rect x="5" y="4" width="4" height="16" rx="1" />
+                        <rect x="15" y="4" width="4" height="16" rx="1" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    )}
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsTimerRunning(false);
+                      setCountdownTimeLeft(countdownDuration);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'inherit',
+                      opacity: 0.5,
+                      transition: 'opacity 0.15s',
+                    }}
+                    title="Reset Timer"
+                  >
+                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsTimerRunning(false);
+                      const h = Math.floor(countdownDuration / 3600);
+                      const m = Math.floor((countdownDuration % 3600) / 60);
+                      const s = countdownDuration % 60;
+                      setEditHH(String(h).padStart(2, '0'));
+                      setEditMM(String(m).padStart(2, '0'));
+                      setEditSS(String(s).padStart(2, '0'));
+                      setIsEditingTimer(true);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'inherit',
+                      opacity: 0.5,
+                      transition: 'opacity 0.15s',
+                    }}
+                    title="Edit Duration"
+                  >
+                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                      <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )
+          )}
+        </div>
         <div className="title-wrap">
           {editingTitle ? (
             <input
