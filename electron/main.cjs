@@ -276,17 +276,53 @@ ipcMain.handle('validate-license', async (event, rawKey) => {
     return { ok: true, test: true };
   }
 
+  // Attempt to load Gumroad config from package.json dynamically so developers can override without editing code
+  let productId = 'IuGRgU5DfICDDM1w7-eY7Q==';
+  let accessToken = '';
+  let usePermalink = false;
+
+  try {
+    const pkgPath = path.join(__dirname, '../package.json');
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      if (pkg.gumroad) {
+        if (pkg.gumroad.product_id) {
+          productId = pkg.gumroad.product_id;
+          usePermalink = false;
+        } else if (pkg.gumroad.product_permalink) {
+          productId = pkg.gumroad.product_permalink;
+          usePermalink = true;
+        }
+        if (pkg.gumroad.access_token !== undefined) {
+          accessToken = pkg.gumroad.access_token;
+        }
+      }
+    }
+  } catch (pkgErr) {
+    console.error('Error reading package.json for Gumroad configuration, using defaults:', pkgErr);
+  }
+
   try {
     // Gumroad API call
+    const requestBody = {
+      license_key: licenseKey,
+      increment_uses_count: true
+    };
+
+    if (accessToken) {
+      requestBody.access_token = accessToken;
+    }
+
+    if (usePermalink) {
+      requestBody.product_permalink = productId;
+    } else {
+      requestBody.product_id = productId;
+    }
+
     const response = await fetch('https://api.gumroad.com/v2/licenses/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        product_id: 'app3', // from gumroad.com/l/app3
-        license_key: licenseKey,
-        access_token: 'IuGRgU5DfICDDM1w7-eY7Q==',
-        increment_uses_count: true
-      })
+      body: JSON.stringify(requestBody)
     });
     
     const data = await response.json();
