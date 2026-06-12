@@ -302,39 +302,87 @@ ipcMain.handle('validate-license', async (event, rawKey) => {
     console.error('Error reading package.json for Gumroad configuration, using defaults:', pkgErr);
   }
 
+  // Gumroad API can be sensitive to content-types. We try URL-encoded first and fall back to JSON.
   try {
-    // Gumroad API call
-    const requestBody = {
-      license_key: licenseKey,
-      increment_uses_count: true
-    };
-
-    if (accessToken) {
-      requestBody.access_token = accessToken;
-    }
-
+    const params = new URLSearchParams();
+    params.append('license_key', licenseKey);
+    params.append('increment_uses_count', 'true');
     if (usePermalink) {
-      requestBody.product_permalink = productId;
+      params.append('product_permalink', productId);
     } else {
-      requestBody.product_id = productId;
+      params.append('product_id', productId);
+    }
+    if (accessToken) {
+      params.append('access_token', accessToken);
     }
 
-    const response = await fetch('https://api.gumroad.com/v2/licenses/verify', {
+    console.log(`Verifying license with Gumroad URL-encoded API. Product ID: ${productId}`);
+    let response = await fetch('https://api.gumroad.com/v2/licenses/verify', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: params.toString()
     });
-    
-    const data = await response.json();
-    if (response.ok && data.success && !data.uses_count_over_limit) {
-      writeConfig({ licenseValid: true, licenseKey });
-      return { ok: true };
+
+    let data = {};
+    try {
+      data = await response.json();
+    } catch (jsonErr) {
+      console.error('Failed to parse Gumroad response as JSON, trying text:', jsonErr);
     }
+
+    console.log('Gumroad direct response state:', response.status, data);
+
+    if (!response.ok || !data.success) {
+      // Fallback to JSON payload
+      const requestBody = {
+        license_key: licenseKey,
+        increment_uses_count: true
+      };
+      if (usePermalink) {
+        requestBody.product_permalink = productId;
+      } else {
+        requestBody.product_id = productId;
+      }
+      if (accessToken) {
+        requestBody.access_token = accessToken;
+      }
+
+      console.log('Trying JSON fallback verification...');
+      const fallbackResponse = await fetch('https://api.gumroad.com/v2/licenses/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (fallbackResponse.ok) {
+        const fallbackData = await fallbackResponse.json();
+        console.log('Gumroad JSON response:', fallbackResponse.status, fallbackData);
+        if (fallbackData.success && !fallbackData.uses_count_over_limit) {
+          writeConfig({ licenseValid: true, licenseKey });
+          return { ok: true };
+        }
+        data = fallbackData; // retain latest error message if still failed
+      }
+    } else {
+      if (data.success && !data.uses_count_over_limit) {
+        writeConfig({ licenseValid: true, licenseKey });
+        return { ok: true };
+      }
+    }
+
+    const errorMessage = data && data.message ? data.message : `Gumroad verification failed (Status: ${response.status})`;
+    return { ok: false, error: errorMessage };
+
   } catch (err) {
     console.error('Gumroad fetch error:', err);
+    return { ok: false, error: err.message || 'Network error connecting to Gumroad.' };
   }
-
-  return { ok: false };
 });
 
 // Dynamic click-through/ignore-mouse-events handling for transparent shadow padding area

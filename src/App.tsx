@@ -6,7 +6,7 @@ declare global {
   interface Window {
     electronAPI?: {
       checkLicense: () => Promise<{ ok: boolean; key?: string }>;
-      validateLicense: (key: string) => Promise<{ ok: boolean; test?: boolean }>;
+      validateLicense: (key: string) => Promise<{ ok: boolean; test?: boolean; error?: string }>;
       closeApp: () => void;
       setHeight: (height: number) => void;
       cardBounds: (bounds: { x: number; y: number; w: number; h: number; scale?: number }) => void;
@@ -561,6 +561,7 @@ export default function App() {
   const [licenseActive, setLicenseActive] = useState<boolean>(true); // active by default in web preview
   const [licenseInput, setLicenseInput] = useState<string>('');
   const [licenseError, setLicenseError] = useState<boolean>(false);
+  const [licenseAPIErrorText, setLicenseAPIErrorText] = useState<string>('');
 
   // Modular Modes Storage
   const [modes, setModes] = useState<Record<string, ModeDetail>>(() => {
@@ -1094,42 +1095,33 @@ export default function App() {
   }, [isGripped]);
 
   // ── Gumroad License verification triggering ──
-  const formatLicenseKey = (val: string) => {
-    const raw = val.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 32);
-    const groups = [
-      raw.slice(0, 8),
-      raw.slice(8, 12),
-      raw.slice(12, 16),
-      raw.slice(16, 20),
-      raw.slice(20, 32),
-    ].filter((s) => s.length > 0);
-    return groups.join('-');
-  };
-
   const handleLicenseInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const formatted = formatLicenseKey(e.target.value);
-    setLicenseInput(formatted);
+    setLicenseInput(e.target.value);
   };
 
   const attemptActivation = async () => {
     const cleaned = licenseInput.trim();
-    if (cleaned.length < 32) {
+    if (cleaned.length < 4) {
       setLicenseError(true);
-      setTimeout(() => setLicenseError(false), 800);
+      setLicenseAPIErrorText('Please enter a valid license key.');
+      setTimeout(() => setLicenseError(false), 1200);
       return;
     }
 
+    setLicenseAPIErrorText('Verifying license key with Gumroad API...');
     if (window.electronAPI) {
       const resp = await window.electronAPI.validateLicense(cleaned);
       if (resp.ok) {
         setLicenseActive(true);
+        setLicenseAPIErrorText('');
       } else {
         setLicenseError(true);
-        setTimeout(() => setLicenseError(false), 800);
+        setLicenseAPIErrorText(resp.error || 'Verification failed. Please double-check your key.');
       }
     } else {
       // Fallback bypass mode on standard web preview
       setLicenseActive(true);
+      setLicenseAPIErrorText('');
     }
   };
 
@@ -1433,8 +1425,8 @@ export default function App() {
               className={`license-input ${licenseError ? 'error' : ''}`}
               id="license-input"
               type="text"
-              placeholder="E.g. XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
-              maxLength={36}
+              placeholder="Enter Gumroad License Key"
+              maxLength={100}
               value={licenseInput}
               onChange={handleLicenseInputChange}
               onKeyDown={(e) => {
@@ -1442,6 +1434,23 @@ export default function App() {
               }}
               style={{ width: '100%' }}
             />
+            {licenseAPIErrorText && (
+              <div 
+                className="license-api-feedback"
+                style={{
+                  fontSize: '11px',
+                  color: licenseError ? '#ff4d4d' : '#00ccff',
+                  textAlign: 'center',
+                  marginTop: '-4px',
+                  marginBottom: '4px',
+                  padding: '0 8px',
+                  wordBreak: 'break-word',
+                  lineHeight: '1.3'
+                }}
+              >
+                {licenseAPIErrorText}
+              </div>
+            )}
             <button className="license-btn" onClick={attemptActivation} style={{ width: '100%' }}>
               Activate
             </button>
