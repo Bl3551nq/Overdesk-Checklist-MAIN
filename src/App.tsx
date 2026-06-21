@@ -1116,7 +1116,14 @@ export default function App() {
         setLicenseAPIErrorText('');
       } else {
         setLicenseError(true);
-        setLicenseAPIErrorText(resp.error || 'Verification failed. Please double-check your key.');
+        const err = resp.error || '';
+        if (err.includes('refunded')) {
+          setLicenseAPIErrorText('This license has been refunded and is no longer valid.');
+        } else if (err.includes('already activated') || err.includes('another device')) {
+          setLicenseAPIErrorText('This license key is already activated on another device. Contact support to transfer.');
+        } else {
+          setLicenseAPIErrorText('Invalid Key, get key from Gumroad');
+        }
       }
     } else {
       // Fallback bypass mode on standard web preview
