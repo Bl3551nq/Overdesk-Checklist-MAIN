@@ -2,6 +2,8 @@ const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require('electr
 const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
+const crypto = require('crypto');
+const os = require('os');
 
 // Keep variables in higher scope to prevent garbage collection
 let mainWindow = null;
@@ -259,6 +261,38 @@ ipcMain.handle('check-license', () => {
   return { ok: false };
 });
 
+function getMachineId() {
+  const raw = [
+    os.hostname(),
+    os.platform(),
+    os.arch(),
+    os.cpus()[0]?.model || '',
+    os.totalmem(),
+  ].join('|');
+  return crypto.createHash('sha256').update(raw).digest('hex');
+}
+
+const ENCRYPTION_KEY = crypto.scryptSync('overdesk-license-key-salt', 'salt', 32);
+const IV = Buffer.alloc(16, 0);
+
+function encryptData(dataStr) {
+  const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, IV);
+  let encrypted = cipher.update(dataStr, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  return encrypted;
+}
+
+function decryptData(encryptedHex) {
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, IV);
+    let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch (e) {
+    return null;
+  }
+}
+
 // Gumroad License verify
 ipcMain.handle('validate-license', async (event, rawKey) => {
   const licenseKey = rawKey.trim();
@@ -277,9 +311,9 @@ ipcMain.handle('validate-license', async (event, rawKey) => {
   }
 
   // Attempt to load Gumroad config from package.json dynamically so developers can override without editing code
-  let productId = 'IuGRgU5DfICDDM1w7-eY7Q==';
+  let productId = 'app2';
   let accessToken = '';
-  let usePermalink = false;
+  let usePermalink = true;
 
   try {
     const pkgPath = path.join(__dirname, '../package.json');
@@ -302,11 +336,38 @@ ipcMain.handle('validate-license', async (event, rawKey) => {
     console.error('Error reading package.json for Gumroad configuration, using defaults:', pkgErr);
   }
 
+  const currentMachineId = getMachineId();
+  const licenseDevicePath = path.join(app.getPath('userData'), 'license-device.enc');
+  let hasFirstActivated = false;
+  let storedMachineId = '';
+
+  if (fs.existsSync(licenseDevicePath)) {
+    try {
+      const encryptedData = fs.readFileSync(licenseDevicePath, 'utf8').trim();
+      const decrypted = decryptData(encryptedData);
+      if (decrypted) {
+        const parsed = JSON.parse(decrypted);
+        if (parsed.machineId && parsed.licenseKey) {
+          const storedKeyMatch = parsed.licenseKey.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+          if (storedKeyMatch === cleanedKey) {
+            storedMachineId = parsed.machineId;
+            hasFirstActivated = true;
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error reading/decrypting machine activation:', err);
+    }
+  }
+
+  // Always call Gumroad with increment_uses_count: false after the first activation so the count stays at 1 and is only used as a flag
+  const shouldIncrement = !hasFirstActivated;
+
   // Gumroad API can be sensitive to content-types. We try URL-encoded first and fall back to JSON.
   try {
     const params = new URLSearchParams();
     params.append('license_key', licenseKey);
-    params.append('increment_uses_count', 'true');
+    params.append('increment_uses_count', shouldIncrement ? 'true' : 'false');
     if (usePermalink) {
       params.append('product_permalink', productId);
     } else {
@@ -339,7 +400,7 @@ ipcMain.handle('validate-license', async (event, rawKey) => {
       // Fallback to JSON payload
       const requestBody = {
         license_key: licenseKey,
-        increment_uses_count: true
+        increment_uses_count: shouldIncrement
       };
       if (usePermalink) {
         requestBody.product_permalink = productId;
@@ -363,14 +424,37 @@ ipcMain.handle('validate-license', async (event, rawKey) => {
       if (fallbackResponse.ok) {
         const fallbackData = await fallbackResponse.json();
         console.log('Gumroad JSON response:', fallbackResponse.status, fallbackData);
-        if (fallbackData.success && !fallbackData.uses_count_over_limit) {
-          writeConfig({ licenseValid: true, licenseKey });
-          return { ok: true };
-        }
         data = fallbackData; // retain latest error message if still failed
       }
-    } else {
-      if (data.success && !data.uses_count_over_limit) {
+    }
+
+    // Process Gumroad result
+    if (data.success) {
+      if (data.purchase && data.purchase.refunded === true) {
+        return { ok: false, error: 'This license has been refunded and is no longer valid.' };
+      }
+
+      const uses = (data.uses !== undefined) ? data.uses : 0;
+      if (uses > 1 && storedMachineId !== currentMachineId) {
+        return { 
+          ok: false, 
+          error: 'This license key is already activated on another device. Contact support to transfer.' 
+        };
+      }
+
+      if (uses === 1 || storedMachineId === currentMachineId) {
+        if (!hasFirstActivated) {
+          try {
+            const dataToEncrypt = JSON.stringify({
+              machineId: currentMachineId,
+              licenseKey: licenseKey
+            });
+            const encryptedStr = encryptData(dataToEncrypt);
+            fs.writeFileSync(licenseDevicePath, encryptedStr, 'utf8');
+          } catch (writeErr) {
+            console.error('Failed to store machine fingerprint:', writeErr);
+          }
+        }
         writeConfig({ licenseValid: true, licenseKey });
         return { ok: true };
       }
