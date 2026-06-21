@@ -262,14 +262,19 @@ ipcMain.handle('check-license', () => {
 });
 
 function getMachineId() {
-  const raw = [
-    os.hostname(),
-    os.platform(),
-    os.arch(),
-    os.cpus()[0]?.model || '',
-    os.totalmem(),
-  ].join('|');
-  return crypto.createHash('sha256').update(raw).digest('hex');
+  try {
+    const cpuModel = (os.cpus() && os.cpus().length > 0) ? os.cpus()[0].model : 'unknown-cpu';
+    const raw = [
+      String(os.hostname() || 'unknown-host'),
+      String(os.platform() || 'unknown-platform'),
+      String(os.arch() || 'unknown-arch'),
+      String(cpuModel),
+      String(os.totalmem() || '0'),
+    ].join('|');
+    return crypto.createHash('sha256').update(raw).digest('hex');
+  } catch (e) {
+    return crypto.createHash('sha256').update('fallback-machine-id').digest('hex');
+  }
 }
 
 const ENCRYPTION_KEY = crypto.scryptSync('overdesk-license-key-salt', 'salt', 32);
