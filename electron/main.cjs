@@ -316,9 +316,9 @@ ipcMain.handle('validate-license', async (event, rawKey) => {
   }
 
   // Attempt to load Gumroad config from package.json dynamically so developers can override without editing code
-  let productId = 'app2';
+  let productId = 'IuGRgU5DfICDDM1w7-eY7Q==';
   let accessToken = '';
-  let usePermalink = true;
+  let usePermalink = false;
 
   try {
     const pkgPath = path.join(__dirname, '../package.json');
